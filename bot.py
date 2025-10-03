@@ -6,8 +6,9 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask, request
 
 # Env vars (در Render set می‌کنید)
-TOKEN = os.getenv('TELEGRAM_TOKEN', 'YOUR_TELEGRAM_TOKEN')  # جایگزین کنید
-FIREBASE_URL = os.getenv('FIREBASE_URL', 'YOUR_FIREBASE_URL')  # مثل https://your-project-id.firebaseio.com/children
+TOKEN = os.getenv('TELEGRAM_TOKEN', '8262524272:AAEKFiekP_HHt4BzBmnryovuaZAq9g9QJn0')
+FIREBASE_URL = os.getenv('FIREBASE_URL', 'https://hanamonitorapp-30c38-default-rtdb.firebaseio.com/children')
+
 
 # اپ Flask برای webhook (Render Web Service)
 app = Flask(__name__)
