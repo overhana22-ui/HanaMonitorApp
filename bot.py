@@ -5,87 +5,90 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request
 
-# Env vars (در Render set می‌کنید)
-TOKEN = os.getenv('TELEGRAM_TOKEN', '8262524272:AAEKFiekP_HHt4BzBmnryovuaZAq9g9QJn0')
-FIREBASE_URL = os.getenv('FIREBASE_URL', 'https://hanamonitorapp-30c38-default-rtdb.firebaseio.com/children')
+# Env vars
+TOKEN = os.getenv('TELEGRAM_TOKEN')  # در Render ست کنید
+FIREBASE_URL = "https://hanamonitorapp-30c38-default-rtdb.firebaseio.com/children"
 
-
-# اپ Flask برای webhook (Render Web Service)
 app = Flask(__name__)
 
-# پنل شیشه‌ای (inline keyboard) متناسب با پروژه HanaMonitorApp
 keyboard = [
     [InlineKeyboardButton("موقعیت فرزند", callback_data="locations")],
     [InlineKeyboardButton("استفاده اپ‌ها", callback_data="app_usage")],
     [InlineKeyboardButton("هشدارها", callback_data="alerts")],
     [InlineKeyboardButton("مخاطبین", callback_data="contacts")],
     [InlineKeyboardButton("تماس‌ها", callback_data="calls")],
-    [InlineKeyboardButton("پیامک‌ها", callback_data="sms")]
+    [InlineKeyboardButton("پیامک‌ها", callback_data="sms")],
+    [InlineKeyboardButton("عکس‌های اخیر", callback_data="photos")]
 ]
 reply_markup = InlineKeyboardMarkup(keyboard)
 
-# هندلر /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "به ربات نظارت HanaMonitorApp خوش آمدید!\n"
         "داده‌های فرزند شما از Firebase لود می‌شود.\n"
-        "دستورات:", 
+        "از دکمه‌های زیر استفاده کنید:", 
         reply_markup=reply_markup
     )
 
-# هندلر کلیک دکمه‌ها (callback query)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # تأیید کلیک
+    await query.answer()
     data_type = query.data
-    chat_id = str(query.from_user.id)  # chat ID والدین
+    chat_id = "5601310517"  # هاردکد chatID
 
     try:
-        # خواندن داده از Firebase
         response = requests.get(f"{FIREBASE_URL}/{chat_id}/{data_type}.json")
         data = response.json()
 
-        if data and 'secret' in data:  # چک secret key از اپ فرزند
-            del data['secret']  # حذف secret از نمایش
+        if isinstance(data, dict) and "secret" in data:
+            del data["secret"]
 
         if data:
             if data_type == "locations":
-                text = f"موقعیت فعلی: عرض جغرافیایی {data.get('lat', 'نامشخص')}, طول جغرافیایی {data.get('lon', 'نامشخص')}\nزمان: {data.get('time', 'نامشخص')}"
+                text = f"📍 موقعیت فعلی:\nعرض: {data.get('lat', 'نامشخص')}, طول: {data.get('lon', 'نامشخص')}\n⏰ زمان: {data.get('time', 'نامشخص')}"
             elif data_type == "app_usage":
-                text = "استفاده از اپ‌ها (دقیقه، آخرین ساعت):\n"
+                text = "📊 استفاده از اپ‌ها (دقیقه در ۱ ساعت اخیر):\n"
                 for app, minutes in data.items():
                     if app != "secret":
                         text += f"• {app}: {minutes} دقیقه\n"
             elif data_type == "alerts":
-                text = "هشدارهای اخیر:\n"
+                text = "🚨 هشدارهای اخیر:\n"
                 if isinstance(data, dict):
-                    for alert_id, alert in data.items():
-                        text += f"• {alert.get('app', 'نامشخص')}: {alert.get('minutes', 0)} دقیقه (زمان: {alert.get('time', 'نامشخص')})\n"
+                    for _, alert in data.items():
+                        text += f"• {alert.get('app', 'نامشخص')}: {alert.get('minutes', 0)} دقیقه (⏰ {alert.get('time', 'نامشخص')})\n"
                 else:
                     text += "هیچ هشداری موجود نیست."
+            elif data_type == "photos":
+                storage_url = f"https://firebasestorage.googleapis.com/v0/b/hanamonitorapp-30c38.appspot.com/o/children%2F{chat_id}%2Fphotos"
+                response = requests.get(storage_url)
+                photos = response.json().get('items', [])
+                if photos:
+                    text = "🖼 عکس‌های اخیر:\n"
+                    for photo in photos[:3]:  # ۳ عکس آخر
+                        name = photo['name']
+                        text += f"• {name}\n"
+                    text += "برای دانلود، به Firebase Storage مراجعه کنید."
+                else:
+                    text = "هیچ عکسی موجود نیست."
             else:
-                # برای بقیه (مخاطبین، تماس‌ها، پیامک‌ها): خلاصه JSON
                 text = f"داده‌های {data_type}:\n{json.dumps(data, indent=2, ensure_ascii=False)}"
         else:
-            text = f"هیچ داده‌ای برای {data_type} موجود نیست. مطمئن شوید اپ فرزند فعال است."
+            text = f"هیچ داده‌ای برای {data_type} موجود نیست."
 
         await query.edit_message_text(text)
     except Exception as e:
-        await query.edit_message_text(f"خطا در بارگیری داده: {str(e)}\nچک کنید Firebase URL درست باشد.")
+        await query.edit_message_text(f"❌ خطا: {str(e)}\nلطفاً Firebase یا Render را چک کنید.")
 
-# Route برای webhook (تلگرام به اینجا POST می‌کنه)
 @app.route('/webhook', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(), application.bot)
     application.process_update(update)
     return 'OK'
 
-# ستاپ اپ تلگرام
 application = Application.builder().token(TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(button_callback))
 
-# ران Flask روی پورت Render
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
